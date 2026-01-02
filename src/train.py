@@ -4,6 +4,9 @@
 """
 
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import json
 import argparse
 import torch
@@ -93,8 +96,8 @@ def main():
     parser.add_argument('-t', required = True, type = int, help = 'Dialogue Turns')
     parser.add_argument('-b', default = 16, type = int, help = 'Training Batch Size')
     parser.add_argument('-e', default = 50, type = int, help = 'Training Epoch Size')
-    parser.add_argument('-d', default = 256, type = int, help = 'Model Embedding Dimensions')
-    parser.add_argument('-H', default = 4, type = int, help = 'Number of Attention Heads')
+    parser.add_argument('-d', default = 128, type = int, help = 'Model Embedding Dimensions')
+    parser.add_argument('-H', default = 2, type = int, help = 'Number of Attention Heads')
     parser.add_argument('--dir', default = './Dataset/Dataset/', type = str, help = 'Working Directory for Data and Tokenizer')
     parser.add_argument('--maxt', default = 512, type = int, help = 'Max Sequence (Token) Length')
     parser.add_argument('--dropout', default = 0.1, type = float, help = 'Dropout Probability')
@@ -103,20 +106,24 @@ def main():
     assert os.path.exists(args.dir), \
         f'Error: WD does not exist: {args.dir}'
     PWD = f'{args.dir}/DT_{args.t}'
-    tokenizer = PreTrainedTokenizerFast(tokenizer_file = os.path.join(PWD, 'tokenizer.json'))
+    print(f'Importing Tokenizer from {PWD}...')
+    tokenizer = PreTrainedTokenizerFast(tokenizer_file = os.path.join(PWD, 'tokenizer.json'),
+        cls_token='[CLS]', sep_token='[SEP]', pad_token='[PAD]', unk_token='[UNK]', mask_token='[MASK]')
 
+    print(f'Importing Train and Validation Sets from {PWD}...')
     training = SitcomDataset(os.path.join(PWD, 'train.jsonl'), tokenizer = tokenizer, maxt = args.maxt)
     validation = SitcomDataset(os.path.join(PWD, 'val.jsonl'), tokenizer = tokenizer, maxt = args.maxt)
-    T_LOADER = DataLoader(training, batch_size = args.b, shuffle = True, num_workers = 4, pin_memory = True)
-    V_LOADER = DataLoader(validation, batch_size = args.b, shuffle = False, num_workers = 4, pin_memory = True)
+    T_LOADER = DataLoader(training, batch_size = args.b, shuffle = True, num_workers = 0, pin_memory = True)
+    V_LOADER = DataLoader(validation, batch_size = args.b, shuffle = False, num_workers = 0, pin_memory = True)
 
+    print(f'Loading SHELDON-T Transformer Model...')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = SheldonTransformer(
         maxt = args.maxt, d_model = args.d, n_heads = args.H, 
         dropout = args.dropout, tokenizer = tokenizer)
     model.to(device = device)
 
-    optimizer = AdamW(model.parameters())
+    optimizer = AdamW(model.parameters(), lr = 1e-4)
     scheduler = ReduceLROnPlateau(optimizer, mode = 'min', patience = 3, factor = 0.5)
     criterion = nn.BCEWithLogitsLoss() # logit-to-binary loss comparison
     writer = SummaryWriter(log_dir = 'runs/experiment1')
@@ -125,6 +132,7 @@ def main():
     best_val_loss = float('inf')
     patience = 4
     counter = 0
+    print(f'Successfully Loaded SHELDON-T. Training...')
 
     for epoch in range(args.e):
         train_loss = 0.0

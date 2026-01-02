@@ -147,7 +147,7 @@ class DialogueEncoder(nn.Module):
 
 class SheldonTransformer(nn.Module):
 
-    def __init__(self, maxt = 512, d_model = 256, n_heads = 4,  dropout = 0.1, tokenizer = None):
+    def __init__(self, maxt = 512, d_model = 128, n_heads = 2,  dropout = 0.1, tokenizer = None):
 
         super().__init__()
         self.maxt = maxt
@@ -158,18 +158,20 @@ class SheldonTransformer(nn.Module):
 
         self.embedder = DialogueEmbedding(self.maxt, self.d_model, self.tokenizer, self.dropout)
 
-        # status quo (my) architecture employs 2 stacked encoders
+        # status quo (my) architecture employs a single encoder
         # in the future, I can customize the number of encoder layers using nn.ModuleList
-        self.encoder1 = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
-        self.encoder2 = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
+        self.encoder = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
+        # self.encoder1 = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
+        # self.encoder2 = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
 
         self.prediction_head = nn.Linear(d_model, 1)
 
     def forward(self, batch):
 
         embedding, attention_mask = self.embedder(batch)
-        output1 = self.encoder1(embedding, attention_mask)
-        output2 = self.encoder2(output1, attention_mask)
+        # output1 = self.encoder1(embedding, attention_mask)
+        # output2 = self.encoder2(output1, attention_mask)
+        output_ = self.encoder(embedding, attention_mask)
 
-        output = self.prediction_head(output2[:, 0, :]) # skim [CLS]
+        output = self.prediction_head(output_[:, 0, :]) # skim [CLS]
         return output
