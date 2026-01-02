@@ -94,7 +94,7 @@ class DialogueAttentionHead(nn.Module):
         attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
         MASK = (1 - attention_mask.float()) * -1e9
 
-        batch_size, seq_len = embedding.shape[:1]
+        batch_size, seq_len = embedding.shape[:2]
 
         # vectorized Q, K, V matrices
         Q = self.w_q(embedding).view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)
@@ -135,13 +135,13 @@ class DialogueEncoder(nn.Module):
             where B = batch size, |S| = max seq length, d = embedding dimension.
         """
 
-        sa_linear = self.head(embedding, attention_mask)
+        norm_embedding = self.layernorm1(embedding)
+        sa_linear = self.head(norm_embedding, attention_mask)
         sa_output_projection = self.output_projection(sa_linear)
         sa_residual = self.dropout_(sa_output_projection) + embedding
-        sa_residual = self.layernorm1(sa_residual)
 
-        sa_ffn = self.ffn(sa_residual) + sa_residual
-        output = self.layernorm2(sa_ffn)
+        norm_residual = self.layernorm2(sa_residual)
+        output = self.ffn(norm_residual) + sa_residual
 
         return output
 
