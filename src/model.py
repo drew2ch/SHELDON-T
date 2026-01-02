@@ -12,10 +12,10 @@ class DialogueEmbedding(nn.Module):
     """ Custom Embedding Layer for Dialogue Corpus
     """
 
-    def __init__(self, max_len, d_model, tokenizer, dropout = 0.1):
+    def __init__(self, maxt, d_model, tokenizer, dropout = 0.1):
 
         super().__init__()
-        self.max_len = max_len
+        self.maxt = maxt
         self.d_model = d_model
         self.tokenizer = tokenizer # pre-trained custom tokenizer
 
@@ -26,8 +26,8 @@ class DialogueEmbedding(nn.Module):
         self.layernorm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len).unsqueeze(1).float()
+        pe = torch.zeros(maxt, d_model)
+        position = torch.arange(0, maxt).unsqueeze(1).float()
         emb_index = torch.arange(0, d_model, 2).float()
         div = torch.pow(10000, -emb_index / d_model)
 
@@ -46,11 +46,11 @@ class DialogueEmbedding(nn.Module):
 
         # get max sequence token length for batch-wise mask trimming
         max_batch_length = attention_mask.sum(dim = 1).max().item()
-        if max_batch_length > self.max_len: # safety net if sequence length exceeds max_len (unlikely)
-            print(f'Error: Max Batch Length ({max_batch_length}) > Max Token Count ({self.max_len})')
-            input_ids = input_ids[:, :self.max_len]
-            segment_ids = segment_ids[:, :self.max_len]
-            attention_mask = attention_mask[:, :self.max_len]
+        if max_batch_length > self.maxt: # safety net if sequence length exceeds maxt (unlikely)
+            print(f'Error: Max Batch Length ({max_batch_length}) > Max Token Count ({self.maxt})')
+            input_ids = input_ids[:, :self.maxt]
+            segment_ids = segment_ids[:, :self.maxt]
+            attention_mask = attention_mask[:, :self.maxt]
         else:
             input_ids = input_ids[:, :max_batch_length]
             segment_ids = segment_ids[:, :max_batch_length]
@@ -147,16 +147,16 @@ class DialogueEncoder(nn.Module):
 
 class SheldonTransformer(nn.Module):
 
-    def __init__(self, max_len = 512, d_model = 256, n_heads = 4,  dropout = 0.1, tokenizer = None):
+    def __init__(self, maxt = 512, d_model = 256, n_heads = 4,  dropout = 0.1, tokenizer = None):
 
         super().__init__()
-        self.max_len = max_len
+        self.maxt = maxt
         self.d_model = d_model
         self.n_heads = n_heads
         self.dropout = dropout
         self.tokenizer = tokenizer
 
-        self.embedder = DialogueEmbedding(self.max_len, self.d_model, self.tokenizer, self.dropout)
+        self.embedder = DialogueEmbedding(self.maxt, self.d_model, self.tokenizer, self.dropout)
 
         # status quo (my) architecture employs 2 stacked encoders
         # in the future, I can customize the number of encoder layers using nn.ModuleList
