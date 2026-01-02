@@ -4,85 +4,9 @@
 """
 
 import math
-import json
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.utils.data import Dataset
-
-class SitcomDataset(Dataset):
-    """ Wrapper Class for BBT dialogue data (.jsonl)
-        Important for generating segment embeddings for scene/prior/target
-    """
-
-    def __init__(self, data_path, tokenizer, max_len):
-        self.data = []
-        with open(data_path, 'r', encoding = 'utf-8') as f:
-            for line in f:
-                self.data.append(json.loads(line))
-        self.tokenizer = tokenizer
-        self.max_len = max_len
-
-        # define special token IDs
-        self.cls_id = tokenizer.cls_token_id
-        self.sep_id = tokenizer.sep_token_id
-        self.pad_id = tokenizer.pad_token_id
-
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, index):
-        item = self.data[index]
-        sequence = item['text']
-
-        # compile tokenized IDs for scene, context, and target
-        segments = sequence.strip().split(' [SEP] ')
-        scene_ids = self.tokenizer.encode(segments.pop(0).strip(), add_special_tokens = False)
-        target_ids = self.tokenizer.encode(segments.pop().strip(), add_special_tokens = False) # last element should include terminal [SEP]
-        context_ids = []
-        for turn in segments: # all remaining segments belong to prior dialogue turns
-            turn_ids = self.tokenizer.encode(turn.strip(), add_special_tokens = False)
-            context_ids += turn_ids + [self.sep_id]
-
-        # safety net: discard context tokens if maximum token count is exceeded
-        static_len = len(scene_ids) + len(target_ids) + 1
-        max_context_len = self.max_len - static_len
-
-        # Case 1: scene + target exceeds max_len on their own
-        if max_context_len < 0:
-            # scene_ids = scene_ids[:self.max_len - len(target_ids)]
-            scene_ids = scene_ids[:self.max_len - len(target_ids) - 1]
-            context_ids = []
-        # Case 2: sequence exceeds max capacity with full context corpus
-        elif len(context_ids) > max_context_len:
-            context_ids = context_ids[-max_context_len:]
-            if context_ids[0] == self.sep_id: # dangling [SEP]
-                context_ids = context_ids[1:]
-
-        # re-format input IDs by token sequence
-        input_ids = (scene_ids + [self.sep_id] + context_ids + target_ids)
-
-        # construct segment IDs: scene 0, context 1, target 2
-        segment_ids = (
-            [0] * (len(scene_ids) + 1) +
-            [1] * len(context_ids) +
-            [2] * len(target_ids)
-        )
-
-        # pad and generate attention mask
-        attention_mask = [1] * len(input_ids)
-        padding_len = self.max_len - len(input_ids)
-        if padding_len > 0:
-            input_ids = input_ids + ([self.pad_id] * padding_len)
-            segment_ids = segment_ids + ([0] * padding_len)
-            attention_mask = attention_mask + ([0] * padding_len)
-
-        return {
-            'input_ids': input_ids,
-            'segment_ids': segment_ids,
-            'attention_mask': attention_mask,
-            'label': torch.tensor(item['label'], dtype = torch.float32)
-        }
 
 class DialogueEmbedding(nn.Module):
     """ Custom Embedding Layer for Dialogue Corpus
