@@ -23,11 +23,9 @@ class DialogueEmbedding(nn.Module):
         self.word_embedding_layer = nn.Embedding(num_embeddings = len(self.tokenizer), embedding_dim = self.d_model)
         self.segment_embedding_layer = nn.Embedding(num_embeddings = 3, embedding_dim = self.d_model)
 
-        # Layernorm and Dropout
         self.layernorm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
-        # Define Positional embeddings (static)
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1).float()
         emb_index = torch.arange(0, d_model, 2).float()
@@ -58,13 +56,9 @@ class DialogueEmbedding(nn.Module):
             segment_ids = segment_ids[:, :max_batch_length]
             attention_mask = attention_mask[:, :max_batch_length]
 
-        # generate word embedding tensor
         word_embeddings = self.word_embedding_layer(input_ids)
-
-        # generate segment embedding
         segment_embeddings = self.segment_embedding_layer(segment_ids)
 
-        # sum embeddings then apply LayerNorm and Dropout
         embeddings = word_embeddings + \
             self.pe[:, :word_embeddings.size(1), :] + \
             segment_embeddings
@@ -107,7 +101,6 @@ class DialogueAttentionHead(nn.Module):
         K = self.w_k(embedding).view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)
         V = self.w_v(embedding).view(batch_size, seq_len, self.n_heads, self.d_head).transpose(1, 2)
 
-        # Return self-attention tensor (B * |S| * d_head)
         attention_weights = F.softmax((Q @ K.transpose(-2, -1)) * self.scale + MASK, dim = -1)
         attention_weights = F.dropout(attention_weights, p = self.dropout, training = self.training)
         attention = attention_weights @ V
@@ -125,16 +118,13 @@ class DialogueEncoder(nn.Module):
         self.dropout = dropout
         self.head = DialogueAttentionHead(self.d_model, self.n_heads, dropout = self.dropout)
 
-        # output projection layer before residual
         self.output_projection = nn.Linear(d_model, d_model)
 
-        # FFN after initial residual addition
         self.ffn = nn.Sequential(
             nn.Linear(d_model, d_model * 4), 
             nn.GELU(), nn.Dropout(dropout), 
             nn.Linear(d_model * 4, d_model), nn.Dropout(dropout))
         
-        # define dropout and layernorm modules
         self.dropout_ = nn.Dropout(dropout)
         self.layernorm1 = nn.LayerNorm(self.d_model)
         self.layernorm2 = nn.LayerNorm(self.d_model)
@@ -145,13 +135,11 @@ class DialogueEncoder(nn.Module):
             where B = batch size, |S| = max seq length, d = embedding dimension.
         """
 
-        # concatenate self attention tensors, then apply linear activation + residual
         sa_linear = self.head(embedding, attention_mask)
         sa_output_projection = self.output_projection(sa_linear)
         sa_residual = self.dropout_(sa_output_projection) + embedding
         sa_residual = self.layernorm1(sa_residual)
 
-        # FFN and secondary residual addition
         sa_ffn = self.ffn(sa_residual) + sa_residual
         output = self.layernorm2(sa_ffn)
 
@@ -170,7 +158,7 @@ class SheldonTransformer(nn.Module):
 
         self.embedder = DialogueEmbedding(self.max_len, self.d_model, self.tokenizer, self.dropout)
 
-        # status quo architecture employs 2 stacked encoders
+        # status quo (my) architecture employs 2 stacked encoders
         # in the future, I can customize the number of encoder layers using nn.ModuleList
         self.encoder1 = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
         self.encoder2 = DialogueEncoder(self.d_model, self.n_heads, dropout = self.dropout)
@@ -179,11 +167,9 @@ class SheldonTransformer(nn.Module):
 
     def forward(self, batch):
 
-        # Transformer Encoder Block
         embedding, attention_mask = self.embedder(batch)
         output1 = self.encoder1(embedding, attention_mask)
         output2 = self.encoder2(output1, attention_mask)
 
-        # prediction head
         output = self.prediction_head(output2[:, 0, :]) # skim [CLS]
         return output
