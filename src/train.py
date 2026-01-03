@@ -109,18 +109,18 @@ def main():
     assert os.path.exists(args.dir), \
         f'Error: WD does not exist: {args.dir}'
     PWD = f'{args.dir}/DT_{args.t}'
-    print(f'Importing Tokenizer from {PWD}...')
+    print(f'Importing Tokenizer...')
     tokenizer = PreTrainedTokenizerFast(tokenizer_file = os.path.join(PWD, 'tokenizer.json'),
         cls_token = '[CLS]', sep_token = '[SEP]', pad_token = '[PAD]', unk_token = '[UNK]', mask_token = '[MASK]')
 
-    print(f'Importing Train and Validation Sets from {PWD}...')
+    print(f'Importing Train and Validation Sets...')
     training = SitcomDataset(os.path.join(PWD, 'train.jsonl'), tokenizer = tokenizer, maxt = args.maxt)
     validation = SitcomDataset(os.path.join(PWD, 'val.jsonl'), tokenizer = tokenizer, maxt = args.maxt)
     T_LOADER = DataLoader(training, batch_size = args.b, shuffle = True, num_workers = 0, pin_memory = True)
     V_LOADER = DataLoader(validation, batch_size = args.b * 2, shuffle = False, num_workers = 0, pin_memory = True)
 
     print(f'Loading SHELDON-T Transformer Model...')
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = 'cpu' # torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = SheldonTransformer(
         maxt = args.maxt, d_model = args.d, n_heads = args.H, 
         dropout = args.dout, tokenizer = tokenizer)
@@ -147,7 +147,7 @@ def main():
             y = batch['label']
             with autocast('cuda'):
                 output = model(batch)
-                loss = criterion(output.squeeze(), y)
+                loss = criterion(output.squeeze(1), y)
             scaler.scale(loss / args.gacc).backward()
             if b % args.gacc == args.gacc - 1 or b == len(loop) - 1:
                 scaler.unscale_(optimizer)
