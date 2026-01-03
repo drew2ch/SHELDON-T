@@ -100,7 +100,10 @@ def main():
     parser.add_argument('-H', default = 2, type = int, help = 'Number of Attention Heads')
     parser.add_argument('--dir', default = './Dataset/Dataset/', type = str, help = 'Working Directory for Data and Tokenizer')
     parser.add_argument('--maxt', default = 512, type = int, help = 'Max Sequence (Token) Length')
-    parser.add_argument('--dropout', default = 0.1, type = float, help = 'Dropout Probability')
+    parser.add_argument('--dout', default = 0.1, type = float, help = 'Dropout Probability')
+    parser.add_argument('--lr', default = 1e-4, type = float, help = 'Optimizer Learning Rate')
+    parser.add_argument('--wd', default = 0.01, type = float, help = 'Optimizer Weight Decay')
+    parser.add_argument('--gacc', default = 1, type = int, help = 'Gradient Accumulation (n*b)')
     args = parser.parse_args()
 
     assert os.path.exists(args.dir), \
@@ -108,22 +111,22 @@ def main():
     PWD = f'{args.dir}/DT_{args.t}'
     print(f'Importing Tokenizer from {PWD}...')
     tokenizer = PreTrainedTokenizerFast(tokenizer_file = os.path.join(PWD, 'tokenizer.json'),
-        cls_token='[CLS]', sep_token='[SEP]', pad_token='[PAD]', unk_token='[UNK]', mask_token='[MASK]')
+        cls_token = '[CLS]', sep_token = '[SEP]', pad_token = '[PAD]', unk_token = '[UNK]', mask_token = '[MASK]')
 
     print(f'Importing Train and Validation Sets from {PWD}...')
     training = SitcomDataset(os.path.join(PWD, 'train.jsonl'), tokenizer = tokenizer, maxt = args.maxt)
     validation = SitcomDataset(os.path.join(PWD, 'val.jsonl'), tokenizer = tokenizer, maxt = args.maxt)
     T_LOADER = DataLoader(training, batch_size = args.b, shuffle = True, num_workers = 0, pin_memory = True)
-    V_LOADER = DataLoader(validation, batch_size = args.b, shuffle = False, num_workers = 0, pin_memory = True)
+    V_LOADER = DataLoader(validation, batch_size = args.b * 2, shuffle = False, num_workers = 0, pin_memory = True)
 
     print(f'Loading SHELDON-T Transformer Model...')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = SheldonTransformer(
         maxt = args.maxt, d_model = args.d, n_heads = args.H, 
-        dropout = args.dropout, tokenizer = tokenizer)
+        dropout = args.dout, tokenizer = tokenizer)
     model.to(device = device)
 
-    optimizer = AdamW(model.parameters(), lr = 1e-4)
+    optimizer = AdamW(model.parameters(), lr = args.lr, weight_decay = args.wd)
     scheduler = ReduceLROnPlateau(optimizer, mode = 'min', patience = 3, factor = 0.5)
     criterion = nn.BCEWithLogitsLoss() # logit-to-binary loss comparison
     writer = SummaryWriter(log_dir = 'runs/experiment1')
@@ -138,18 +141,19 @@ def main():
         train_loss = 0.0
         loop = tqdm(T_LOADER, desc = f'Epoch {epoch+1}/{args.e}', leave = False)
         model.train()
-        for batch in loop:
+        for b, batch in enumerate(loop):
             batch = {k: v.to(device) for k, v in batch.items()}
-            optimizer.zero_grad()
+            if b % args.gacc == 0: optimizer.zero_grad()
             y = batch['label']
             with autocast('cuda'):
                 output = model(batch)
                 loss = criterion(output.squeeze(), y)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
+            scaler.scale(loss / args.gacc).backward()
+            if b % args.gacc == args.gacc - 1 or b == len(loop) - 1:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
             train_loss += loss.item()
         train_loss /= len(T_LOADER)
         
