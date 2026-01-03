@@ -103,7 +103,7 @@ def main():
     parser.add_argument('--dout', default = 0.1, type = float, help = 'Dropout Probability')
     parser.add_argument('--lr', default = 1e-4, type = float, help = 'Optimizer Learning Rate')
     parser.add_argument('--wd', default = 0.01, type = float, help = 'Optimizer Weight Decay')
-    parser.add_argument('--gacc', default = 1, type = int, help = 'Gradient Accumulation (n*b)')
+    parser.add_argument('--gacc', default = 4, type = int, help = 'Gradient Accumulation (n*b)')
     args = parser.parse_args()
 
     assert os.path.exists(args.dir), \
@@ -129,7 +129,7 @@ def main():
     optimizer = AdamW(model.parameters(), lr = args.lr, weight_decay = args.wd)
     scheduler = ReduceLROnPlateau(optimizer, mode = 'min', patience = 3, factor = 0.5)
     criterion = nn.BCEWithLogitsLoss() # logit-to-binary loss comparison
-    writer = SummaryWriter(log_dir = 'runs/experiment1')
+    writer = SummaryWriter(log_dir = f'runs/exp_DT{args.t}_BS{args.b}')
     scaler = GradScaler()
 
     best_val_loss = float('inf')
