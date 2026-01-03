@@ -136,6 +136,7 @@ def main():
     patience = 4
     counter = 0
     print(f'Successfully Loaded SHELDON-T. Training...')
+    os.makedirs('./models', exist_ok = True)
 
     for epoch in range(args.e):
         train_loss = 0.0
@@ -183,7 +184,7 @@ def main():
                 'model_state': model.state_dict(),
                 'optimizer_state': optimizer.state_dict(),
                 'val_loss': val_loss}, 
-                os.path.join(PWD, f'best_model_dt{args.t}.pt'))
+                f'models/best_model_dt{args.t}_b{args.b}.pt')
         else: counter += 1
         if counter >= patience:
             print(f'Early Stopping: Epoch {epoch + 1}')
