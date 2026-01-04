@@ -99,7 +99,7 @@ def main():
             'epoch': epoch,
             'model_state': model.state_dict(),
             'optimizer_state': optimizer.state_dict()},
-            f'dep-models/best_model_dt{args.t}_b{BATCH_SIZE}.pt')
+            f'dep-models/SHELDONT_dt{args.t}.pt')
     
     print(f'Training Complete for DT = {args.t}.')
 
