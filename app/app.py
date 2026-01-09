@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel, model_validator
 from transformers import PreTrainedTokenizerFast
-from model import SheldonTransformer
+from src.model import SheldonTransformer
 
 MODEL_DIR = './models'
 MAX_TOKEN_LENGTH = 512
